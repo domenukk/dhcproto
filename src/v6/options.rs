@@ -1,3 +1,4 @@
+use alloc::{string::String, vec::Vec};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use trust_dns_proto::{
@@ -5,7 +6,7 @@ use trust_dns_proto::{
     serialize::binary::{BinDecodable, BinDecoder, BinEncodable, BinEncoder},
 };
 
-use std::{cmp::Ordering, net::Ipv6Addr, ops::RangeInclusive};
+use core::{cmp::Ordering, ops::RangeInclusive};
 
 use crate::v6::option_codes::OptionCode;
 use crate::{
@@ -14,6 +15,11 @@ use crate::{
     error::{DecodeResult, EncodeResult},
     v6::{MessageType, RelayMessage},
 };
+
+#[cfg(not(feature = "std"))]
+use core::net::Ipv6Addr;
+#[cfg(feature = "std")]
+use std::net::Ipv6Addr;
 
 // server can send multiple IA_NA options to request multiple addresses
 // so we must be able to handle multiple of the same option type
@@ -83,7 +89,7 @@ impl DhcpOptions {
 impl IntoIterator for DhcpOptions {
     type Item = DhcpOption;
 
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+    type IntoIter = alloc::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
@@ -164,13 +170,13 @@ pub enum DhcpOption {
 }
 
 impl PartialOrd for DhcpOption {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for DhcpOption {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         OptionCode::from(self).cmp(&OptionCode::from(other))
     }
 }

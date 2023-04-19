@@ -1,3 +1,7 @@
+#![no_std]
+extern crate alloc;
+use alloc::{borrow::ToOwned, string::{String, ToString}, format, vec::Vec};
+
 use proc_macro::{Group, Ident, TokenStream, TokenTree};
 struct Entry {
     code: u8,
@@ -50,7 +54,7 @@ fn parse_input(input: TokenStream) -> Vec<Entry> {
 }
 
 fn generate_optioncode_code<'a>(entries: &'a [Entry]) -> impl Iterator<Item = String> + 'a {
-    let enum_impl = std::iter::once(
+    let enum_impl = core::iter::once(
         "
         /// DHCP Options
         #[cfg_attr(feature = \"serde\", derive(Serialize, Deserialize))]
@@ -64,7 +68,7 @@ fn generate_optioncode_code<'a>(entries: &'a [Entry]) -> impl Iterator<Item = St
         let code = e.code;
         format!("/// {code} - {description}\n{id},")
     }))
-    .chain(std::iter::once(
+    .chain(core::iter::once(
         "
     /// Unknown code
     Unknown(u8),
@@ -73,9 +77,9 @@ fn generate_optioncode_code<'a>(entries: &'a [Entry]) -> impl Iterator<Item = St
         .to_owned(),
     ));
 
-    let impl_option_from_u8 = std::iter::once(
+    let impl_option_from_u8 = core::iter::once(
         "
-        impl std::convert::From<u8> for OptionCode {
+        impl core::convert::From<u8> for OptionCode {
         fn from(x : u8) -> Self{
             match x {
         "
@@ -86,11 +90,11 @@ fn generate_optioncode_code<'a>(entries: &'a [Entry]) -> impl Iterator<Item = St
         let code = e.code;
         format!("{code} => Self::{id},")
     }))
-    .chain(std::iter::once("_ => Self::Unknown(x)}}}".to_owned()));
+    .chain(core::iter::once("_ => Self::Unknown(x)}}}".to_owned()));
 
-    let impl_u8_from_option = std::iter::once(
+    let impl_u8_from_option = core::iter::once(
         "
-        impl std::convert::From<OptionCode> for u8 {
+        impl core::convert::From<OptionCode> for u8 {
         fn from(x : OptionCode) -> Self{
             match x {
         "
@@ -101,7 +105,7 @@ fn generate_optioncode_code<'a>(entries: &'a [Entry]) -> impl Iterator<Item = St
         let code = e.code;
         format!("OptionCode::{id} => {code},")
     }))
-    .chain(std::iter::once(
+    .chain(core::iter::once(
         "OptionCode::Unknown(code) => code }}}".to_owned(),
     ));
 
@@ -111,7 +115,7 @@ fn generate_optioncode_code<'a>(entries: &'a [Entry]) -> impl Iterator<Item = St
 }
 
 fn generate_dhcpoption_code<'a>(entries: &'a [Entry]) -> impl Iterator<Item = String> + 'a {
-    let impl_dhcp_option = std::iter::once(
+    let impl_dhcp_option = core::iter::once(
         "
         /// DHCP Options
         #[cfg_attr(feature = \"serde\", derive(Serialize, Deserialize))]
@@ -129,7 +133,7 @@ fn generate_dhcpoption_code<'a>(entries: &'a [Entry]) -> impl Iterator<Item = St
             format!("/// {code} - {description}\n{id},")
         }
     }))
-    .chain(std::iter::once(
+    .chain(core::iter::once(
         "
         /// Unknown option
         Unknown(UnknownOption),
@@ -138,7 +142,7 @@ fn generate_dhcpoption_code<'a>(entries: &'a [Entry]) -> impl Iterator<Item = St
         .to_owned(),
     ));
 
-    let impl_optioncode_from_dhcpoption_ref = std::iter::once(
+    let impl_optioncode_from_dhcpoption_ref = core::iter::once(
         "
         impl From<&DhcpOption> for OptionCode {
             fn from(opt: &DhcpOption) -> Self {
@@ -150,7 +154,7 @@ fn generate_dhcpoption_code<'a>(entries: &'a [Entry]) -> impl Iterator<Item = St
     .chain(entries.iter().map(|e| {
         let id = &e.id;
         let var_field = if let Some(data_description) = &e.data_type {
-            std::iter::once("(_")
+            core::iter::once("(_")
                 .chain(data_description.stream().into_iter().filter_map(|e| {
                     if let TokenTree::Punct(p) = e {
                         (p.as_char() == ',').then_some(",_")
@@ -158,14 +162,14 @@ fn generate_dhcpoption_code<'a>(entries: &'a [Entry]) -> impl Iterator<Item = St
                         None
                     }
                 }))
-                .chain(std::iter::once(")"))
+                .chain(core::iter::once(")"))
                 .collect()
         } else {
             "".to_owned()
         };
         format!("{id}{var_field} => OptionCode::{id},")
     }))
-    .chain(std::iter::once(
+    .chain(core::iter::once(
         "Unknown(n) => OptionCode::Unknown(n.code)}}}".to_owned(),
     ));
 

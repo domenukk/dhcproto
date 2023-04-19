@@ -13,18 +13,22 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-thiserror = "1.0"
-rand = "0.8"
-serde = { version = "1.0", features = ["derive"], optional = true }
-hex = "0.4.3"
-trust-dns-proto = { version = "0.22.0", default-features = false }
-url = "2.2.2"
+thiserror = { version = "1.0", package = "thiserror-core", default-features = false }
+rand = { version = "0.8", default_features = false, features = ["alloc", "std_rng"] }
+#serde = { version = "1.0", features = ["derive"], optional = true }
+hex = { version = "0.4.3", default_features = false, features = ["alloc"] }
+trust-dns-proto = { git = "https://github.com/domenukk/trust-dns.git", version = "0.22.0", default-features = false, rev = "c644215" }
+url = { git = "https://github.com/domenukk/rust-url.git", rev = "3efe254", version = "2.2.2", default_features = false, features = ["alloc"] }
 dhcproto-macros = { path = "./dhcproto-macros", version = "0.1.0" }
-ipnet = "2.5"
+ipnet = { git = "https://github.com/domenukk/ipnet.git", rev = "5828e6b", default_features = false }
+once_cell = { version = "1.17.1", default-features = false, features = ["critical-section"] }
+critical-section = "1.1.1"
+const-random = "0.1.15"
 
 [features]
-default = []
-serde = ["dep:serde", "url/serde", "ipnet/serde", "trust-dns-proto/serde-config"]
+default = [] # ["std"]
+std = ["thiserror/std", "rand/std"]
+#serde = ["std", "dep:serde", "url/serde", "ipnet/serde", "trust-dns-proto/serde-config"]
 
 [dev-dependencies]
 criterion = "0.3"

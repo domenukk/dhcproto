@@ -1,5 +1,9 @@
+#[cfg(not(feature = "std"))]
+use core::net::Ipv6Addr;
+#[cfg(feature = "std")]
 use std::net::Ipv6Addr;
 
+use alloc::vec::Vec;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 

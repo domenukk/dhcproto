@@ -1,8 +1,15 @@
 //!
-use std::{collections::HashMap, fmt, net::Ipv4Addr};
+use alloc::collections::BTreeMap;
+use core::fmt;
+
+#[cfg(not(feature = "std"))]
+use crate::v4::Ipv4Addr;
+#[cfg(feature = "std")]
+use std::net::Ipv4Addr;
 
 use crate::{Decodable, Encodable};
 
+use alloc::vec::Vec;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +31,7 @@ use serde::{Deserialize, Serialize};
 /// [`DhcpOption::RelayAgentInformation`]: crate::v4::DhcpOption::RelayAgentInformation
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct RelayAgentInformation(HashMap<RelayCode, RelayInfo>);
+pub struct RelayAgentInformation(BTreeMap<RelayCode, RelayInfo>);
 
 impl RelayAgentInformation {
     /// Get the data for a particular [`RelayCode`]
@@ -76,7 +83,7 @@ impl RelayAgentInformation {
 
 impl Decodable for RelayAgentInformation {
     fn decode(d: &mut crate::Decoder<'_>) -> super::DecodeResult<Self> {
-        let mut opts = HashMap::new();
+        let mut opts = BTreeMap::new();
         while let Ok(opt) = RelayInfo::decode(d) {
             opts.insert(RelayCode::from(&opt), opt);
         }
@@ -91,7 +98,7 @@ impl Encodable for RelayAgentInformation {
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RelayInfo {
     /// 1 - <https://datatracker.ietf.org/doc/html/rfc3046>
     AgentCircuitId(Vec<u8>),
@@ -167,16 +174,13 @@ impl Decodable for RelayInfo {
             | RelayCode::VendorSpecificInformation) => {
                 let length = d.read_u8()?;
                 let bytes = d.read_slice(length as usize)?.to_vec();
-                Unknown(UnknownInfo {
-                    code: code.into(),
-                    data: bytes,
-                })
+                Unknown(UnknownInfo(code.into(), bytes))
             }
             // not yet implemented
             RelayCode::Unknown(code) => {
                 let length = d.read_u8()?;
                 let bytes = d.read_slice(length as usize)?.to_vec();
-                Unknown(UnknownInfo { code, data: bytes })
+                Unknown(UnknownInfo(code, bytes))
             }
         })
     }
@@ -208,8 +212,8 @@ impl Encodable for RelayInfo {
             // not yet implemented
             Unknown(opt) => {
                 // length of bytes stored in Vec
-                e.write_u8(opt.data.len() as u8)?;
-                e.write_slice(&opt.data)?
+                e.write_u8(opt.1.len() as u8)?;
+                e.write_slice(&opt.1)?
             }
         };
         Ok(())
@@ -217,7 +221,7 @@ impl Encodable for RelayInfo {
 }
 
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Copy, Default, Clone, PartialEq, Eq)]
+#[derive(Copy, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RelayFlags(u8);
 
 impl fmt::Debug for RelayFlags {
@@ -263,36 +267,30 @@ impl From<RelayFlags> for u8 {
 
 /// An as-of-yet unimplemented relay info
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct UnknownInfo {
-    code: u8,
-    data: Vec<u8>,
-}
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct UnknownInfo(u8, Vec<u8>);
 
 impl UnknownInfo {
     pub fn new(code: RelayCode, data: Vec<u8>) -> Self {
-        Self {
-            code: code.into(),
-            data,
-        }
+        Self(code.into(), data)
     }
     /// return the relay code
     pub fn code(&self) -> RelayCode {
-        self.code.into()
+        self.0.into()
     }
     /// return the data for this code
     pub fn data(&self) -> &[u8] {
-        &self.data
+        &self.1
     }
     /// take ownership and return the parts of this
     pub fn into_parts(self) -> (RelayCode, Vec<u8>) {
-        (self.code.into(), self.data)
+        (self.0.into(), self.1)
     }
 }
 
 /// relay code, represented as a u8
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RelayCode {
     AgentCircuitId,
     AgentRemoteId,
@@ -362,16 +360,23 @@ impl From<&RelayInfo> for RelayCode {
             SubscriberId(_) => RelayCode::SubscriberId,
             RelayAgentFlags(_) => RelayCode::RelayAgentFlags,
             ServerIdentifierOverride(_) => RelayCode::ServerIdentifierOverride,
-            Unknown(unknown) => RelayCode::Unknown(unknown.code),
+            Unknown(unknown) => RelayCode::Unknown(unknown.0),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use alloc::boxed::Box;
+
     use super::*;
 
-    type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+    #[cfg(not(feature = "std"))]
+    use core::error::Error;
+    #[cfg(feature = "std")]
+    use std::error::Error;
+
+    type Result<T> = core::result::Result<T, Box<dyn Error>>;
 
     #[test]
     fn test_unicast() {
@@ -389,6 +394,7 @@ mod tests {
         let mut out = vec![];
         let mut enc = crate::Encoder::new(&mut out);
         opt.encode(&mut enc)?;
+        #[cfg(feature = "std")]
         println!("{:?}", enc.buffer());
         assert_eq!(out, actual);
 

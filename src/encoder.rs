@@ -1,4 +1,6 @@
 //! Encodable trait & Encoder
+use alloc::vec::Vec;
+
 use crate::error::{EncodeError, EncodeResult};
 
 /// A trait for types which are deserializable to DHCP binary formats

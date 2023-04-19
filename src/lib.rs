@@ -1,3 +1,6 @@
+#![no_std]
+#![cfg_attr(not(feature = "std"), feature(error_in_core))]
+#![cfg_attr(not(feature = "std"), feature(ip_in_core))]
 #![warn(
     missing_debug_implementations,
     // missing_docs, // some variants still missing docs
@@ -83,6 +86,15 @@
 //! #    }
 //! ```
 
+#[cfg(feature = "std")]
+#[macro_use]
+extern crate std;
+#[macro_use]
+pub extern crate alloc;
+
+use core::cell::RefCell;
+
+use critical_section::Mutex;
 pub use decoder::{Decodable, Decoder};
 pub use encoder::{Encodable, Encoder};
 
@@ -92,5 +104,30 @@ pub mod error;
 pub mod v4;
 pub mod v6;
 
+use rand::{
+    distributions::{Distribution, Standard},
+    rngs::StdRng,
+    Rng, SeedableRng,
+};
 pub use trust_dns_proto::error::ProtoError as NameError;
 pub use trust_dns_proto::rr::Name;
+
+use const_random::const_random;
+use once_cell::sync::Lazy;
+
+static SEEDED_RNG: Lazy<Mutex<RefCell<StdRng>>> = Lazy::new(|| {
+    let rng = StdRng::seed_from_u64(const_random!(u64));
+    Mutex::new(RefCell::new(rng))
+});
+
+#[cfg(feature = "std")]
+pub(crate) use rand::random;
+
+/// Generates a random value on `no_std`.
+#[cfg(not(feature = "std"))]
+pub fn random<T>() -> T
+where
+    Standard: Distribution<T>,
+{
+    critical_section::with(|cs| SEEDED_RNG.borrow(cs).borrow_mut().gen())
+}

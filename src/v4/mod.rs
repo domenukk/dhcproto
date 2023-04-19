@@ -78,8 +78,9 @@
 //! # Ok(()) }
 //! ```
 //!
-use std::{fmt, net::Ipv4Addr, str::Utf8Error};
+use core::{fmt, str::Utf8Error};
 
+use alloc::{string::String, vec::Vec};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -98,6 +99,11 @@ pub use crate::{
     encoder::{Encodable, Encoder},
     error::*,
 };
+
+#[cfg(not(feature = "std"))]
+use core::net::Ipv4Addr;
+#[cfg(feature = "std")]
+use std::net::Ipv4Addr;
 
 pub const MAGIC: [u8; 4] = [99, 130, 83, 99];
 
@@ -177,7 +183,7 @@ impl Default for Message {
             htype: HType::Eth,
             hlen: 0,
             hops: 0,
-            xid: rand::random(),
+            xid: crate::random(),
             secs: 0,
             flags: Flags::default(),
             ciaddr: Ipv4Addr::UNSPECIFIED,
@@ -204,7 +210,7 @@ impl Message {
         giaddr: Ipv4Addr,
         chaddr: &[u8],
     ) -> Self {
-        Self::new_with_id(rand::random(), ciaddr, yiaddr, siaddr, giaddr, chaddr)
+        Self::new_with_id(crate::random(), ciaddr, yiaddr, siaddr, giaddr, chaddr)
     }
 
     /// returns a new Message with OpCode set to BootRequest
@@ -399,7 +405,7 @@ impl Message {
     }
     /// Get a reference to the message's fname, UTF-8 encoded
     pub fn fname_str(&self) -> Option<Result<&str, Utf8Error>> {
-        self.fname().map(std::str::from_utf8)
+        self.fname().map(core::str::from_utf8)
     }
     /// Set the message's fname using a UTF-8 string
     /// # Panic
@@ -428,7 +434,7 @@ impl Message {
     }
     /// Get a reference to the message's sname as a UTF-8 encoded string.
     pub fn sname_str(&self) -> Option<Result<&str, Utf8Error>> {
-        self.sname().map(std::str::from_utf8)
+        self.sname().map(core::str::from_utf8)
     }
     /// Set the message's sname. No particular encoding is enforced.
     /// # Panic
@@ -532,7 +538,7 @@ impl fmt::Display for Message {
                             None
                         }
                         .into_iter()
-                        .chain(std::iter::once(c))
+                        .chain(core::iter::once(c))
                     })
                     .collect::<String>(),
             )
@@ -547,21 +553,32 @@ impl fmt::Display for Message {
 #[cfg(test)]
 mod tests {
 
+    use alloc::boxed::Box;
+
     use super::*;
 
-    type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+    #[cfg(not(feature = "std"))]
+    use core::error::Error;
+    #[cfg(feature = "std")]
+    use std::error::Error;
+
+    type Result<T> = core::result::Result<T, Box<dyn Error>>;
 
     fn decode_ipv4(input: Vec<u8>, expected: MessageType) -> Result<()> {
         // decode
         let msg = Message::decode(&mut Decoder::new(&input))?;
+        #[cfg(feature = "std")]
         dbg!(&msg);
         assert_eq!(msg.opts().msg_type().unwrap(), expected);
         // now encode
         let mut buf = Vec::new();
         let mut e = Encoder::new(&mut buf);
         msg.encode(&mut e)?;
-        println!("{buf:?}");
-        println!("{input:?}");
+        #[cfg(feature = "std")]
+        {
+            println!("{buf:?}");
+            println!("{input:?}");
+        }
         // decode again
         let res = Message::decode(&mut Decoder::new(&buf))?;
         // check Messages are equal after decoding/encoding
@@ -590,6 +607,7 @@ mod tests {
     fn decode_bootreq() -> Result<()> {
         let offer = bootreq();
         let msg = Message::decode(&mut Decoder::new(&offer))?;
+        #[cfg(feature = "std")]
         println!("{msg:?}");
         // now encode
         let mut buf = Vec::new();

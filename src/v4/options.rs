@@ -1,4 +1,11 @@
-use std::{borrow::Cow, collections::HashMap, iter, net::Ipv4Addr};
+use alloc::{
+    borrow::Cow,
+    collections::BTreeMap,
+    string::{String, ToString},
+    vec::Vec,
+};
+use core::{hash::Hash, iter};
+use url::Url;
 
 use crate::{
     decoder::{Decodable, Decoder},
@@ -15,6 +22,11 @@ use trust_dns_proto::{
     rr::Name,
     serialize::binary::{BinDecodable, BinDecoder, BinEncodable, BinEncoder, EncodeMode},
 };
+
+#[cfg(not(feature = "std"))]
+use crate::v4::Ipv4Addr;
+#[cfg(feature = "std")]
+use std::net::Ipv4Addr;
 
 // declares DHCP Option codes.
 // generates:
@@ -103,7 +115,7 @@ dhcproto_macros::declare_codes!(
     {93,  ClientSystemArchitecture, "Client System Architecture - <https://www.rfc-editor.org/rfc/rfc4578.html>", (Architecture)},
     {94,  ClientNetworkInterface, "Client Network Interface - <https://www.rfc-editor.org/rfc/rfc4578.html>", (u8, u8, u8)},
     {97,  ClientMachineIdentifier, "Client Machine Identifier - <https://www.rfc-editor.org/rfc/rfc4578.html>", (Vec<u8>)},
-    {114, CaptivePortal, "Captive Portal - <https://datatracker.ietf.org/doc/html/rfc8910>", (url::Url)},
+    {114, CaptivePortal, "Captive Portal - <https://datatracker.ietf.org/doc/html/rfc8910>", (Url)},
     {118, SubnetSelection, "Subnet selection - <https://datatracker.ietf.org/doc/html/rfc3011>", (Ipv4Addr)},
     {119, DomainSearch, "Domain Search - <https://www.rfc-editor.org/rfc/rfc3397.html>", (Vec<Name>)},
     {121, ClasslessStaticRoute, "Classless Static Route - <https://www.rfc-editor.org/rfc/rfc3442>", (Vec<(Ipv4Net, Ipv4Addr)>)},
@@ -137,7 +149,7 @@ dhcproto_macros::declare_codes!(
 /// ```
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct DhcpOptions(HashMap<OptionCode, DhcpOption>);
+pub struct DhcpOptions(BTreeMap<OptionCode, DhcpOption>);
 
 impl DhcpOptions {
     /// Create new [`DhcpOptions`]
@@ -258,7 +270,7 @@ impl DhcpOptions {
 
 impl IntoIterator for DhcpOptions {
     type Item = (OptionCode, DhcpOption);
-    type IntoIter = std::collections::hash_map::IntoIter<OptionCode, DhcpOption>;
+    type IntoIter = alloc::collections::btree_map::IntoIter<OptionCode, DhcpOption>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
@@ -270,21 +282,21 @@ impl FromIterator<DhcpOption> for DhcpOptions {
         DhcpOptions(
             iter.into_iter()
                 .map(|opt| ((&opt).into(), opt))
-                .collect::<HashMap<OptionCode, DhcpOption>>(),
+                .collect::<BTreeMap<OptionCode, DhcpOption>>(),
         )
     }
 }
 
 impl FromIterator<(OptionCode, DhcpOption)> for DhcpOptions {
     fn from_iter<T: IntoIterator<Item = (OptionCode, DhcpOption)>>(iter: T) -> Self {
-        DhcpOptions(iter.into_iter().collect::<HashMap<_, _>>())
+        DhcpOptions(iter.into_iter().collect::<BTreeMap<_, _>>())
     }
 }
 
 impl Decodable for DhcpOptions {
     fn decode(decoder: &mut Decoder<'_>) -> DecodeResult<Self> {
         // represented as a vector in the actual message
-        let mut opts = HashMap::new();
+        let mut opts = BTreeMap::new();
         // should we error the whole parser if we fail to parse an
         // option or just stop parsing options? -- here we will just stop
         while let Ok(opt) = DhcpOption::decode(decoder) {
@@ -330,25 +342,25 @@ impl Encodable for DhcpOptions {
 }
 
 impl PartialOrd for OptionCode {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for OptionCode {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         u8::from(*self).cmp(&u8::from(*other))
     }
 }
 
 impl PartialOrd for DhcpOption {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for DhcpOption {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         OptionCode::from(self).cmp(&OptionCode::from(other))
     }
 }
@@ -559,7 +571,7 @@ fn decode_inner(
         OptionCode::ClientMachineIdentifier => {
             ClientMachineIdentifier(decoder.read_slice(len)?.to_vec())
         }
-        OptionCode::CaptivePortal => CaptivePortal(decoder.read_str(len)?.parse()?),
+        OptionCode::CaptivePortal => CaptivePortal(decoder.read_str(len)?.try_into()?),
         OptionCode::SubnetSelection => SubnetSelection(decoder.read_ipv4(len)?),
         OptionCode::DomainSearch => {
             let mut name_decoder = BinDecoder::new(decoder.read_slice(len)?);
@@ -1165,17 +1177,23 @@ impl From<MessageType> for u8 {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::VecDeque;
+    use alloc::{boxed::Box, collections::VecDeque};
 
     use super::*;
-    use std::str::FromStr;
+    use alloc::str::FromStr;
 
-    type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+    #[cfg(not(feature = "std"))]
+    use core::error::Error;
+    #[cfg(feature = "std")]
+    use std::error::Error;
+
+    type Result<T> = core::result::Result<T, Box<dyn Error>>;
 
     fn test_opt(orig: DhcpOption, actual: Vec<u8>) -> Result<()> {
         let mut out = vec![];
         let mut enc = Encoder::new(&mut out);
         orig.encode(&mut enc)?;
+        #[cfg(feature = "std")]
         println!("encoded {:?}", enc.buffer());
         assert_eq!(out, actual);
 
@@ -1186,9 +1204,11 @@ mod tests {
     #[test]
     fn test_opts() -> Result<()> {
         let (input, len) = binput();
+        #[cfg(feature = "std")]
         println!("{input:?}");
         let opts = DhcpOptions::decode(&mut Decoder::new(&input))?;
 
+        #[cfg(feature = "std")]
         println!("{opts:?}");
         let mut output = Vec::new();
         opts.encode(&mut Encoder::new(&mut output))?;
@@ -1225,8 +1245,8 @@ mod tests {
     #[test]
     fn test_ips_long() -> Result<()> {
         let ip = "192.168.0.1".parse::<Ipv4Addr>().unwrap();
-        let list = std::iter::repeat(ip).take(64).collect();
-        let mut bytes = std::iter::repeat(ip)
+        let list = core::iter::repeat(ip).take(64).collect();
+        let mut bytes = core::iter::repeat(ip)
             .take(63)
             .flat_map(|ip| u32::from(ip).to_be_bytes())
             .collect::<VecDeque<u8>>();
@@ -1313,7 +1333,7 @@ mod tests {
         res.extend(url);
 
         test_opt(
-            DhcpOption::CaptivePortal("https://foobar.com".parse()?), // url parse will add trailing slash
+            DhcpOption::CaptivePortal("https://foobar.com".try_into()?), // url parse will add trailing slash
             res,
         )?;
 

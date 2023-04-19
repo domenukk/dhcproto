@@ -1,14 +1,16 @@
 //! Decodable trait & Decoder
+use alloc::{borrow::ToOwned, string::String, vec::Vec};
+
 use crate::error::{DecodeError, DecodeResult};
 
-use std::{
-    array::TryFromSliceError,
-    convert::TryInto,
-    ffi::{CStr, CString},
-    mem,
-    net::{Ipv4Addr, Ipv6Addr},
-    str,
-};
+use core::{array::TryFromSliceError, convert::TryInto, ffi::CStr, mem};
+
+use alloc::{ffi::CString, str};
+
+#[cfg(not(feature = "std"))]
+use core::net::{Ipv4Addr, Ipv6Addr};
+#[cfg(feature = "std")]
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// A trait for types which are serializable to and from DHCP binary formats
 pub trait Decodable: Sized {

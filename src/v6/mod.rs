@@ -60,7 +60,7 @@ mod oro_codes;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use std::{convert::TryInto, fmt, net::Ipv6Addr};
+use core::{convert::TryInto, fmt};
 
 // re-export submodules from v6
 pub use self::option_codes::*;
@@ -72,6 +72,11 @@ pub use crate::{
     encoder::{Encodable, Encoder},
     error::*,
 };
+
+#[cfg(not(feature = "std"))]
+use core::net::Ipv6Addr;
+#[cfg(feature = "std")]
+use std::net::Ipv6Addr;
 
 /// default dhcpv6 server port
 pub const SERVER_PORT: u16 = 547;
@@ -137,7 +142,7 @@ impl Default for Message {
     fn default() -> Self {
         Self {
             msg_type: MessageType::Solicit,
-            xid: rand::random(),
+            xid: crate::random(),
             opts: DhcpOptions::new(),
         }
     }
@@ -457,21 +462,32 @@ impl fmt::Display for RelayMessage {
 #[cfg(test)]
 mod tests {
 
+    use alloc::{boxed::Box, vec::Vec};
+
     use super::*;
 
-    type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+    #[cfg(not(feature = "std"))]
+    use core::error::Error;
+    #[cfg(feature = "std")]
+    use std::error::Error;
+
+    type Result<T> = core::result::Result<T, Box<dyn Error>>;
 
     fn decode_ipv6(input: Vec<u8>, mtype: MessageType) -> Result<()> {
         // decode
         let msg = Message::decode(&mut Decoder::new(&input))?;
+        #[cfg(feature = "std")]
         dbg!(&msg);
         assert_eq!(mtype, msg.msg_type);
         // now encode
         let mut buf = Vec::new();
         let mut e = Encoder::new(&mut buf);
         msg.encode(&mut e)?;
-        println!("{buf:?}");
-        println!("{input:?}");
+        #[cfg(feature = "std")]
+        {
+            println!("{buf:?}");
+            println!("{input:?}");
+        }
         // no PAD bytes or hashmap with ipv6 so the lens will be exact
         assert_eq!(buf.len(), input.len());
         // decode again
